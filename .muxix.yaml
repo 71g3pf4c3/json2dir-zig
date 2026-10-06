@@ -1,0 +1,368 @@
+# muxix project configuration
+# For global settings, edit ~/.config/muxix/config.yaml
+# All options below are commented out - uncomment to override defaults.
+
+#-------------------------------------------------------------------------------
+# Appearance
+#-------------------------------------------------------------------------------
+
+# Color scheme for the dashboard. Press T (shift+t) in the dashboard to cycle.
+# Options: default, emberforge, glacier-signal, obsidian-pop, slate-garden,
+#          phosphor-arcade, lasergrid, mossfire, night-sorbet, graphite-code,
+#          festival-circuit, teal-drift
+# theme: default
+#
+# Or with explicit dark/light mode (otherwise auto-detected from terminal):
+# theme:
+#   scheme: emberforge
+#   mode: dark
+
+#-------------------------------------------------------------------------------
+# Git
+#-------------------------------------------------------------------------------
+
+# The primary branch to merge into.
+# Default: Auto-detected from remote HEAD, falls back to main/master.
+# main_branch: main
+
+# Default base branch/commit to branch from when creating new worktrees.
+# The --base CLI flag always overrides this.
+# Default: The currently checked out branch.
+# base_branch: main
+
+# Default merge strategy for `muxix merge`.
+# Options: merge (default), rebase, squash
+# CLI flags (--rebase, --squash) always override this.
+# merge_strategy: rebase
+
+# Keep the worktree, window, and branch after `muxix merge` by default.
+# Keep and cleanup CLI flags always override this.
+# merge_keep: true
+
+#-------------------------------------------------------------------------------
+# Naming & Paths
+#-------------------------------------------------------------------------------
+
+# Directory where worktrees are created.
+# Can be relative to repo root or absolute. Supports `~` for home directory
+# and `{project}` for the main worktree's directory name, so a global config
+# can namespace each repo, e.g. `~/.muxix/{project}`.
+# Default: Sibling directory '<project>__worktrees'.
+# worktree_dir: .worktrees
+
+# Strategy for deriving names from branch names.
+# Options: full (default), basename (part after last '/').
+# worktree_naming: basename
+
+# Prefix added to worktree directories and tmux window names.
+# worktree_prefix: ""
+
+# Prefix for tmux window names.
+# Default: "mx-"
+# window_prefix: "mx-"
+
+#-------------------------------------------------------------------------------
+# Tmux
+#-------------------------------------------------------------------------------
+
+# Mode for tmux operations: window (default) or session.
+# - window: Create windows within the current tmux session
+# - session: Create new tmux sessions for each worktree (useful for session-per-project workflows)
+# mode: session
+
+# Custom tmux pane layout (mutually exclusive with 'windows').
+# Default: Two-pane layout with shell and clear command.
+# panes:
+#   - command: pnpm install
+#     focus: true
+#   - split: horizontal
+#   - command: clear
+#     split: vertical
+#     size: 5
+
+# Multiple windows per session (session mode only, mutually exclusive with 'panes').
+# Each window can have its own pane layout. Unnamed windows get tmux's
+# automatic naming based on the running command.
+# windows:
+#   - name: editor
+#     panes:
+#       - command: <agent>
+#         focus: true
+#       - split: horizontal
+#         size: 20
+#   - name: tests
+#     panes:
+#       - command: just test --watch
+#   - panes:
+#       - command: tail -f app.log
+
+# Auto-apply agent status icons to tmux window format.
+# Default: true
+# status_format: true
+
+# Custom icons for agent status display.
+# status_icons:
+#   working: "🤖"
+#   waiting: "💬"
+#   done: "✅"
+
+#-------------------------------------------------------------------------------
+# Projects
+#-------------------------------------------------------------------------------
+
+# How `muxix start` multiplexes tracked projects.
+# Options: session (default) — one session per tracked project.
+# project_mux: session
+
+# Which worktrees `muxix start` and `muxix project open` restore.
+# Options:
+#   all        - every worktree of the project
+#   unfinished - worktrees whose agent stopped mid-work (no completion,
+#                status not done)
+#   active     - worktrees that have any agent state at all (default)
+#   recent     - worktrees touched within `project_open_days` days
+# The --worktrees <mode> flag always overrides this.
+# Default: active
+# project_open: active
+
+# Window in days for `project_open: recent`.
+# Default: 7
+# project_open_days: 7
+
+#-------------------------------------------------------------------------------
+# Agent & AI
+#-------------------------------------------------------------------------------
+
+# Agent command for '<agent>' placeholder in pane commands.
+# Default: "claude"
+# agent: claude
+
+# Per-project agent selection by path regex (global config only).
+# Matched against the project's main worktree root, first match wins. Ranks
+# below an `agent:` in a project .muxix.yaml and above the global `agent:`.
+# Edit with `muxix config agent set|unset`; inspect with
+# `muxix config agent list|which`.
+# agent_rules:
+#   - match: "^~/repos/work/"
+#     agent: opencode
+#   - match: "^~/repos/muxix(/|$)"
+#     agent: pi
+
+# LLM-based branch name generation (`muxix add -A`).
+# auto_name:
+#   model: "gpt-4o-mini"
+#   system_prompt: "Generate a kebab-case git branch name."
+#   background: true  # Always run in background when using --auto-name
+
+#-------------------------------------------------------------------------------
+# Hooks
+#-------------------------------------------------------------------------------
+
+# Commands to run in new worktree before tmux window opens.
+# These block window creation - use for short tasks only.
+# Use "<global>" to inherit from global config.
+# Set to empty list to disable: `post_create: []`
+# post_create:
+#   - "<global>"
+#   - mise use
+
+# Commands to run before merging (e.g., linting, tests).
+# Aborts the merge if any command fails.
+# Use "<global>" to inherit from global config.
+# Environment variables available:
+#   - MUXIX_BRANCH_NAME: The name of the branch being merged
+#   - MUXIX_TARGET_BRANCH: The name of the target branch (e.g., main)
+#   - MUXIX_WORKTREE_PATH: Absolute path to the worktree
+#   - MUXIX_PROJECT_ROOT: Absolute path of the main project directory
+#   - MUXIX_HANDLE: The worktree handle/window name
+# pre_merge:
+#   - "<global>"
+#   - cargo test
+#   - cargo clippy -- -D warnings
+
+# Commands to run before worktree removal (during merge or remove).
+# Useful for backing up gitignored files before cleanup.
+# Default: Auto-detects Node.js projects and fast-deletes node_modules.
+# Set to empty list to disable: `pre_remove: []`
+# Environment variables available:
+#   - MUXIX_HANDLE: The worktree handle (directory name)
+#   - MUXIX_WORKTREE_PATH: Absolute path of the worktree being deleted
+#   - MUXIX_PROJECT_ROOT: Absolute path of the main project directory
+# pre_remove:
+#   - mkdir -p "$MUXIX_PROJECT_ROOT/artifacts/$MUXIX_HANDLE"
+#   - cp -r test-results/ "$MUXIX_PROJECT_ROOT/artifacts/$MUXIX_HANDLE/"
+
+#-------------------------------------------------------------------------------
+# Files
+#-------------------------------------------------------------------------------
+
+# File operations when creating a worktree.
+# files:
+#   # Files to copy (useful for .env files that need to be unique).
+#   copy:
+#     - .env.local
+#
+#   # Files/directories to symlink (saves disk space, shares caches).
+#   # Default: None.
+#   # Use "<global>" to inherit from global config.
+#   symlink:
+#     - "<global>"
+#     - node_modules
+
+#-------------------------------------------------------------------------------
+# Dashboard
+#-------------------------------------------------------------------------------
+
+# Actions for dashboard keybindings (c = commit, m = merge).
+# Values are sent to the agent's pane. Use ! prefix for shell commands.
+# Preview size (10-90): larger = more preview, less table. Use +/- keys to adjust.
+# dashboard:
+#   commit: "Commit staged changes with a descriptive message"
+#   merge: "!muxix merge"
+#   preview_size: 60
+
+#-------------------------------------------------------------------------------
+# Sidebar
+#-------------------------------------------------------------------------------
+
+# sidebar:
+#   # Position: left (default) or top.
+#   position: left
+#
+#   # Left sidebar width: absolute columns or percentage of terminal width.
+#   # Default: "10%" (clamped to 25-50 columns).
+#   # Explicit values are not clamped (minimum 10 columns).
+#   width: 40       # absolute columns
+#   # width: "15%"  # percentage of terminal width (takes precedence over any saved interactive size)
+#
+#   # Top bar height in rows.
+#   height: 3
+#
+#   # Default scope for the sidebar toggle command: "global" or "session".
+#   # "session" makes plain `wng sidebar` activate only the current tmux session.
+#   # Use `wng sidebar --global` to override to global regardless of this setting.
+#   # default_scope: session
+#
+#   # Layout mode for the left sidebar: "compact" or "tiles" (cards).
+#   # Default: "tiles". Can be toggled at runtime with 'v' key.
+#   layout: tiles
+#
+#   horizontal:
+#     item_width: 24  # horizontal chip width in columns, clamped 12-80
+#
+#   templates:
+#     horizontal:
+#       - "{status_icon} {primary} {pane_suffix} {activity} {fill} {elapsed}"
+#       - "{secondary} {fill} {git_stats}"
+#       - "{pane_title}"
+
+#-------------------------------------------------------------------------------
+# Sandbox
+#-------------------------------------------------------------------------------
+
+# sandbox:
+#   enabled: false
+#   backend: lima
+#   # host_commands: ["just", "cargo", "npm"]
+#   # container:
+#   #   runtime: docker          # docker | podman | apple-container
+#   #   # memory: 16G            # VM memory limit (apple-container default: 16G)
+#   #   # cpus: 4                # VM CPU count (only passed when set)
+#   #   # Mask files out of the worktree bind mounts (paths relative to the
+#   #   # worktree root). Each listed file is shadowed by /dev/null so the
+#   #   # sandboxed agent cannot read it. Missing files are skipped.
+#   #   # GLOBAL-ONLY: ignored when set in a project .muxix.yaml.
+#   #   # excluded_files:
+#   #   #   - .env
+#   #   #   - .env.local
+#   # lima:
+#   #   isolation: project
+#   #   cpus: 4
+#   #   memory: 4GiB
+#   #   # Custom provision script (runs once on VM creation, as user).
+#   #   # Use sudo for system commands.
+#   #   # provision: |
+#   #   #   sudo apt-get install -y ripgrep fd-find jq
+#   # Extra mount points (read-only by default).
+#   # Supports simple paths or detailed specs with guest_path and writable.
+#   # extra_mounts:
+#   #   - ~/my-notes
+#   #   - host_path: ~/data
+#   #     guest_path: /mnt/data
+#   #     writable: true
+
+# Pipeline event tracing (`muxix::event`, logged to ~/.local/state/muxix.log).
+# Controls the structured event timeline the runner/orchestrator emit. The
+# `MUXIX_EVENTS` env var still overrides `level` when set.
+# events:
+#   # Master switch. false silences every muxix::event. Default: true.
+#   enabled: true
+#   # Trace level: off | info | debug | trace. Ignored if MUXIX_EVENTS is set.
+#   level: info
+#   # Silence specific kinds or whole groups (group-aware: `pane.probe` matches
+#   # pane.probe.ok, pane.probe.retry, ...).
+#   disable:
+#     - pane.probe
+#     - turn.poll
+#   # Allowlist: when non-empty, ONLY these kinds/groups are emitted (still
+#   # subject to `disable`). Empty = all.
+#   only: []
+
+#-------------------------------------------------------------------------------
+# Agent bootstrap
+#-------------------------------------------------------------------------------
+
+# Uniform per-agent setup, applied by `muxix setup`: skills, plugins, and
+# system-prompt components. Keeps "what the project needs" in one place
+# instead of in each agent's own config.
+# bootstrap:
+#   # Skills installed into every skills-capable agent's skills directory
+#   # (~/.claude/skills, ~/.config/opencode/skills, ~/.pi/agent/skills,
+#   # ~/.omp/agent/skills). Each entry is a path to a directory containing a
+#   # SKILL.md, relative to the project root or absolute. Codex, Copilot, and
+#   # Gemini have no skills directory and are skipped.
+#   skills:
+#     - ./skills/muxix
+#     # Table form: what the skill needs. `npm` packages are installed by
+#     # muxix into `npm_prefix` (pinned when `@version` is given, pruned when
+#     # no entity declares them any more); `bin` names are only asserted on
+#     # PATH -- provide them via the system. Same block works on `mcp.<name>`.
+#     - path: ./skills/openspec-taskflow
+#       requires:
+#         npm: ["@fission-ai/openspec@1.6.0"]
+#         bin: [python3]
+#
+#   # npm global prefix for `requires.npm` installs (bins in <prefix>/bin).
+#   npm_prefix: ~/.local
+#   # true: every package under the prefix that no entity declares is pruned,
+#   # not only the ones muxix installed. Hand installs get reverted.
+#   deps_strict: false
+#
+#   # Prompt components merged into each agent's system prompt. A bare name
+#   # loads .muxix/prompt-components/<name>.md; anything containing `/` is a
+#   # path to a .md file (absolute, ~, or relative to the project root).
+#   prompt_components:
+#     - house-style
+#     - ~/repos/harness/prompt-components/jj.md
+#
+#   # Plugins installed for agents that support them (pi, omp).
+#   plugins:
+#     - npm:pi-web-access
+#
+#   # Agent-agnostic capabilities: a feature resolves to that agent's plugin
+#   # when one is declared, otherwise to the `default` prompt component.
+#   features:
+#     ponytail:
+#       pi: git:github.com/DietrichGebert/ponytail
+#       default: ponytail
+#
+#   # Per-agent additions. Keys are agent display names, lowercased
+#   # ("claude code", "opencode", "pi", "omp", "codex", "gemini cli").
+#   agents:
+#     claude code:
+#       add_skills:
+#         - ./skills/worktree
+#       add_prompt_components:
+#         - code-review
+#       exclude_prompt_components:
+#         - ponytail

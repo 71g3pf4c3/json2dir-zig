@@ -1,0 +1,11 @@
+.{
+    .name = .json2dir,
+    .version = "0.1.0",
+    .fingerprint = 0x8f2d1c4a9b6e3570,
+    .minimum_zig_version = "0.15.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
