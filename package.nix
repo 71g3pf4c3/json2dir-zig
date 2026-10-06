@@ -2,23 +2,42 @@
   lib,
   stdenv,
   zig,
+  scdoc,
+  installShellFiles,
   zigTarget ? null,
   optimize ? "ReleaseSafe",
 }:
 
+let
+  # Single source of truth for the version: build.zig.zon.
+  version =
+    let
+      zonText = builtins.readFile ./build.zig.zon;
+      versionLine = lib.findFirst (
+        line: lib.hasInfix ".version = \"" line
+      ) null (lib.splitString "\n" zonText);
+    in
+    if versionLine == null then
+      throw "package.nix: cannot find .version in build.zig.zon"
+    else
+      lib.head (lib.match ".*\.version = \"([^\"]+)\".*" versionLine);
+in
 stdenv.mkDerivation {
   pname = "json2dir";
-  version = "0.1.0";
+  inherit version;
 
   src = ./.;
 
-  nativeBuildInputs = [ zig ];
+  nativeBuildInputs = [
+    zig
+    scdoc
+    installShellFiles
+  ];
 
   dontConfigure = true;
-  dontFixup = true;
 
-  # zig build install writes straight into $out via --prefix; there is
-  # nothing left for the standard installPhase to do.
+  # zig build install writes straight into $out via --prefix; the manual
+  # is rendered next to it, and the install phase only adds completions.
   buildPhase = ''
     runHook preBuild
 
@@ -34,10 +53,18 @@ stdenv.mkDerivation {
       --global-cache-dir "$ZIG_GLOBAL_CACHE_DIR" \
       --summary all
 
+    mkdir -p "$out/share/man/man1"
+    scdoc < docs/json2dir.1.scd > "$out/share/man/man1/json2dir.1"
+
     runHook postBuild
   '';
 
   installPhase = ''
+    runHook preInstall
+    installShellCompletion \
+      --bash completions/json2dir.bash \
+      --zsh completions/_json2dir \
+      --fish completions/json2dir.fish
     runHook postInstall
   '';
 

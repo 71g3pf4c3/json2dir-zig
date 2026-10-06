@@ -1,7 +1,7 @@
 .{
     .name = .json2dir,
     .version = "0.1.0",
-    .fingerprint = 0x8f2d1c4a9b6e3570,
+    .fingerprint = 0x39e14e270772cf75,
     .minimum_zig_version = "0.15.0",
     .paths = .{
         "build.zig",

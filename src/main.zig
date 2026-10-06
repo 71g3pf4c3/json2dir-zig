@@ -1,7 +1,12 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// json2dir-zig: materialize JSON documents as directory trees.
+// Clean-room reimplementation of the json2dir conversion scheme.
+
 const std = @import("std");
 const manifest = @import("manifest.zig");
+const build_info = @import("build_info");
 
-const version_text = "json2dir-zig 0.1.0\n";
+const version_text = "json2dir-zig " ++ build_info.version ++ "\n";
 
 const usage_text =
     \\Usage: json2dir [OPTIONS] [FILE]
@@ -37,7 +42,7 @@ const usage_text =
     \\
 ;
 
-const max_input: usize = 1 << 30; // 1 GiB, plenty for a directory tree
+const max_input: u64 = 1 << 30; // 1 GiB, plenty for a directory tree
 
 const Cli = struct {
     input: ?[]const u8 = null,
@@ -47,25 +52,22 @@ const Cli = struct {
     force: bool = true,
 };
 
-fn writeStdout(comptime text: []const u8) void {
-    var buf: [8192]u8 = undefined;
-    var fw = std.fs.File.stdout().writer(&buf);
-    fw.interface.writeAll(text) catch {};
-    fw.interface.flush() catch {};
+fn printStdout(io: std.Io, comptime text: []const u8) void {
+    std.Io.File.stdout().writeStreamingAll(io, text) catch {};
 }
 
-fn die(code: u8, comptime fmt: []const u8, args: anytype) noreturn {
+fn die(io: std.Io, code: u8, comptime fmt: []const u8, args: anytype) noreturn {
     var buf: [2048]u8 = undefined;
-    var fw = std.fs.File.stderr().writer(&buf);
+    var fw = std.Io.File.stderr().writer(io, &buf);
     const w = &fw.interface;
     w.print("json2dir: " ++ fmt ++ "\n", args) catch {};
     w.flush() catch {};
     std.process.exit(code);
 }
 
-fn usageError(comptime fmt: []const u8, args: anytype) noreturn {
-    var buf: [2048]u8 = undefined;
-    var fw = std.fs.File.stderr().writer(&buf);
+fn usageError(io: std.Io, comptime fmt: []const u8, args: anytype) noreturn {
+    var buf: [4096]u8 = undefined;
+    var fw = std.Io.File.stderr().writer(io, &buf);
     const w = &fw.interface;
     w.print("json2dir: " ++ fmt ++ "\n\n", args) catch {};
     w.writeAll(usage_text) catch {};
@@ -73,20 +75,17 @@ fn usageError(comptime fmt: []const u8, args: anytype) noreturn {
     std.process.exit(1);
 }
 
-fn parseCli(gpa: std.mem.Allocator) !Cli {
-    const argv = try std.process.argsAlloc(gpa);
-    defer std.process.argsFree(gpa, argv);
-
+fn parseCli(io: std.Io, args: std.process.Args) Cli {
     var cli = Cli{};
     var positional: ?[]const u8 = null;
     var no_more_flags = false;
 
-    var i: usize = 1;
-    while (i < argv.len) : (i += 1) {
-        const arg: []const u8 = argv[i];
+    var it = std.process.Args.Iterator.init(args);
+    _ = it.next(); // argv[0]
 
+    while (it.next()) |arg| {
         if (no_more_flags or arg.len < 2 or arg[0] != '-') {
-            if (positional != null) usageError("unexpected extra argument '{s}'", .{arg});
+            if (positional != null) usageError(io, "unexpected extra argument '{s}'", .{arg});
             positional = arg;
             continue;
         }
@@ -96,11 +95,11 @@ fn parseCli(gpa: std.mem.Allocator) !Cli {
         }
 
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-            writeStdout(usage_text);
+            printStdout(io, usage_text);
             std.process.exit(0);
         }
         if (std.mem.eql(u8, arg, "-V") or std.mem.eql(u8, arg, "--version")) {
-            writeStdout(version_text);
+            printStdout(io, version_text);
             std.process.exit(0);
         }
         if (std.mem.eql(u8, arg, "-n") or std.mem.eql(u8, arg, "--dry-run")) {
@@ -116,9 +115,8 @@ fn parseCli(gpa: std.mem.Allocator) !Cli {
             continue;
         }
         if (std.mem.eql(u8, arg, "-o") or std.mem.eql(u8, arg, "--out")) {
-            i += 1;
-            if (i >= argv.len) usageError("option '{s}' requires a value", .{arg});
-            cli.out = argv[i];
+            const value = it.next() orelse usageError(io, "option '{s}' requires a value", .{arg});
+            cli.out = value;
             continue;
         }
         if (std.mem.startsWith(u8, arg, "--out=")) {
@@ -126,73 +124,75 @@ fn parseCli(gpa: std.mem.Allocator) !Cli {
             continue;
         }
 
-        usageError("unknown option '{s}'", .{arg});
+        usageError(io, "unknown option '{s}'", .{arg});
     }
 
     cli.input = positional;
     return cli;
 }
 
-pub fn main() !void {
-    var gpa_state = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa_state.deinit();
-    const gpa = gpa_state.allocator();
+pub fn main(init: std.process.Init) !u8 {
+    const io = init.io;
+    const gpa = init.arena.allocator();
 
-    const cli = try parseCli(gpa);
+    const cli = parseCli(io, init.minimal.args);
 
     // ---- read input ------------------------------------------------------
 
     const data: []u8 = blk: {
         if (cli.input) |path| {
             if (!std.mem.eql(u8, path, "-")) {
-                var f = std.fs.cwd().openFile(path, .{}) catch |e| {
-                    die(3, "cannot open '{s}': {s}", .{ path, @errorName(e) });
+                var f = std.Io.Dir.cwd().openFile(io, path, .{}) catch |e| {
+                    die(io, 3, "cannot open '{s}': {s}", .{ path, @errorName(e) });
                 };
-                defer f.close();
-                break :blk f.readToEndAlloc(gpa, max_input) catch |e| switch (e) {
-                    error.StreamTooLong => die(3, "input exceeds the 1 GiB limit", .{}),
-                    else => die(3, "cannot read '{s}': {s}", .{ path, @errorName(e) }),
+                defer f.close(io);
+                var rbuf: [64 * 1024]u8 = undefined;
+                var fr = f.readerStreaming(io, &rbuf);
+                break :blk fr.interface.allocRemaining(gpa, .limited(max_input)) catch |e| switch (e) {
+                    error.StreamTooLong => die(io, 3, "input exceeds the 1 GiB limit", .{}),
+                    else => die(io, 3, "cannot read '{s}': {s}", .{ path, @errorName(e) }),
                 };
             }
         }
-        const stdin = std.fs.File.stdin();
-        break :blk stdin.readToEndAlloc(gpa, max_input) catch |e| switch (e) {
-            error.StreamTooLong => die(3, "input exceeds the 1 GiB limit", .{}),
-            else => die(3, "cannot read stdin: {s}", .{@errorName(e)}),
+        const stdin = std.Io.File.stdin();
+        var rbuf: [64 * 1024]u8 = undefined;
+        var fr = stdin.readerStreaming(io, &rbuf);
+        break :blk fr.interface.allocRemaining(gpa, .limited(max_input)) catch |e| switch (e) {
+            error.StreamTooLong => die(io, 3, "input exceeds the 1 GiB limit", .{}),
+            else => die(io, 3, "cannot read stdin: {s}", .{@errorName(e)}),
         };
     };
 
     // ---- parse --------------------------------------------------------
 
     const parsed = std.json.parseFromSlice(std.json.Value, gpa, data, .{}) catch |e| {
-        die(2, "invalid JSON: {s}", .{@errorName(e)});
+        die(io, 2, "invalid JSON: {s}", .{@errorName(e)});
     };
-    defer parsed.deinit();
 
     // ---- resolve the target directory ---------------------------------
 
     // `null` (only for --dry-run) means "the target directory does not
     // exist": everything in the plan is new, and we create nothing —
     // not even --out itself. Wet runs get a real directory.
-    var out_dir: ?std.fs.Dir = std.fs.cwd().openDir(cli.out, .{}) catch null;
+    var out_dir: ?std.Io.Dir = std.Io.Dir.cwd().openDir(io, cli.out, .{}) catch null;
 
     if (out_dir == null and !cli.dry_run) {
-        std.fs.cwd().makePath(cli.out) catch |e| {
-            die(3, "cannot create target directory '{s}': {s}", .{ cli.out, @errorName(e) });
+        std.Io.Dir.cwd().createDirPath(io, cli.out) catch |e| {
+            die(io, 3, "cannot create target directory '{s}': {s}", .{ cli.out, @errorName(e) });
         };
-        out_dir = std.fs.cwd().openDir(cli.out, .{}) catch |e| {
-            die(3, "cannot open target directory '{s}': {s}", .{ cli.out, @errorName(e) });
+        out_dir = std.Io.Dir.cwd().openDir(io, cli.out, .{}) catch |e| {
+            die(io, 3, "cannot open target directory '{s}': {s}", .{ cli.out, @errorName(e) });
         };
     }
-    defer if (out_dir) |*d| d.close();
+    defer if (out_dir) |*d| d.close(io);
 
     // ---- materialize ----------------------------------------------------
 
     var stdout_buffer: [8192]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    manifest.materialize(gpa, out_dir, parsed.value, .{
+    manifest.materialize(io, gpa, out_dir, parsed.value, .{
         .force = cli.force,
         .dry_run = cli.dry_run,
         .verbose = cli.verbose,
@@ -203,6 +203,7 @@ pub fn main() !void {
     };
 
     try stdout.flush();
+    return 0;
 }
 
 test {

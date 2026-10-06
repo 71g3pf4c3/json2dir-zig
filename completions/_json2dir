@@ -1,0 +1,11 @@
+#compdef json2dir
+# zsh completion for json2dir
+
+_arguments \
+    '(-o --out)'{-o,--out}'[target directory (default: .)]:directory:_directories' \
+    '(-n --dry-run)'{-n,--dry-run}'[validate and print the plan; write nothing]' \
+    '(-v --verbose)'{-v,--verbose}'[print one line per entry while applying]' \
+    '--no-clobber[fail instead of replacing existing entries]' \
+    '(-h --help)'{-h,--help}'[print usage and exit]' \
+    '(-V --version)'{-V,--version}'[print version and exit]' \
+    '1:JSON file:_files -g "*.json(-.)"'

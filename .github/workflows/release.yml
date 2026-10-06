@@ -1,0 +1,59 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  artifacts:
+    name: ${{ matrix.artifact }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: x86_64-linux-musl
+            flake-output: .#json2dir-static
+          - artifact: aarch64-linux-musl
+            flake-output: .#packages.aarch64-linux.json2dir-static
+          - artifact: aarch64-darwin
+            flake-output: .#packages.aarch64-darwin.json2dir
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v30
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build
+        run: nix build ${{ matrix.flake-output }} --print-out-paths
+
+      - name: Package
+        run: |
+          bin="$(nix build ${{ matrix.flake-output }} --print-out-paths)/bin/json2dir"
+          install -Dm755 "$bin" "json2dir-${{ matrix.artifact }}/json2dir"
+          tar -czf "json2dir-${{ matrix.artifact }}.tar.gz" "json2dir-${{ matrix.artifact }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: json2dir-${{ matrix.artifact }}
+          path: json2dir-${{ matrix.artifact }}.tar.gz
+
+  release:
+    needs: artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

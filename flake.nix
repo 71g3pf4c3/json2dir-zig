@@ -11,7 +11,6 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
       forAllSystems = lib.genAttrs systems;
@@ -27,7 +26,9 @@
     {
       packages = forAllSystems (
         system:
-        let pkgs = pkgsFor system; in
+        let
+          pkgs = pkgsFor system;
+        in
         {
           json2dir = pkgs.callPackage ./package.nix { };
           default = self.packages.${system}.json2dir;
@@ -48,7 +49,9 @@
 
       checks = forAllSystems (
         system:
-        let pkgs = pkgsFor system; in
+        let
+          pkgs = pkgsFor system;
+        in
         {
           inherit (self.packages.${system}) json2dir;
           zig-tests = pkgs.callPackage ./nix/zig-tests.nix { };
@@ -60,7 +63,9 @@
 
       devShells = forAllSystems (
         system:
-        let pkgs = pkgsFor system; in
+        let
+          pkgs = pkgsFor system;
+        in
         {
           default = pkgs.mkShell {
             packages = [
@@ -85,6 +90,25 @@
       nixosModules.default = import ./nix/nixos-module.nix;
       homeManagerModules.default = import ./nix/home-manager-module.nix;
 
-      formatter = forAllSystems (system: (pkgsFor system).nixfmt);
+      # nixfmt 1.5 deprecated bare (no-argument) invocation; `nix fmt`
+      # without paths calls the formatter with zero args, so wrap it:
+      # no args = format every .nix file in the tree.
+      formatter = forAllSystems (
+        system:
+        let
+          pkgs = pkgsFor system;
+        in
+        pkgs.writeShellScriptBin "nixfmt" ''
+          if [ $# -eq 0 ]; then
+            find . -name '*.nix' \
+              -not -path './.git/*' \
+              -not -path './.zig-cache/*' \
+              -not -path './result*' \
+              -print0 | xargs -0 ${lib.getExe pkgs.nixfmt}
+          else
+            exec ${lib.getExe pkgs.nixfmt} "$@"
+          fi
+        ''
+      );
     };
 }

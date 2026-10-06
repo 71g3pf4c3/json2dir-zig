@@ -3,6 +3,9 @@
 > JSON documents → directory trees. Drop-in compatible with
 > [alurm/json2dir](https://github.com/alurm/json2dir) — minus the footguns.
 
+[![CI](https://github.com/71g3pf4c3/json2dir-zig/actions/workflows/ci.yml/badge.svg)](https://github.com/71g3pf4c3/json2dir-zig/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+
 `json2dir` is a genuinely nice idea: a declarative, diffable, grep-able format
 for describing a tree of files, directories, symlinks and executables, and a
 tiny tool that turns it into a real tree. The original implementation,
@@ -20,10 +23,10 @@ $ cat example-tree.json
 }
 
 $ json2dir -n example-tree.json
+file   greeting
+dir    dir
 file   dir/subfile
 dir    dir/subdir
-dir    dir
-file   greeting
 link   symlink -> target path
 exec   script
 
@@ -35,7 +38,8 @@ Howdy!
 One static binary. Zero runtime dependencies. No interpreter, no cargo, no
 libc even (see [`json2dir-static`](#install)). Std-only Zig — the JSON parser
 is `std.json`, because for a schema-less document tree a third-party
-serializer buys nothing.
+serializer buys nothing. Ships with a man page (`json2dir(1)`) and shell
+completions for bash, zsh and fish.
 
 ---
 
@@ -292,15 +296,26 @@ materialization (content, modes, symlink targets, script execution),
 idempotent rerun, `--no-clobber` refusal, dry-run writing nothing, exit
 codes, and a planted `ln -s /` symlink-attack path.
 
+The nix package installs a man page (`json2dir(1)`, rendered with scdoc) and
+shell completions (bash, zsh, fish) alongside the binary. Releases (on `v*`
+tags) attach fully static tarballs for `x86_64-linux-musl`,
+`aarch64-linux-musl` and `aarch64-darwin` — cross-built from a single
+linux runner, because that is what Zig is for.
+
 ## Development
 
 ```console
 $ nix develop           # zig 0.16, zls, nixfmt
 $ zig build test        # unit tests live in src/manifest.zig
 $ zig build run -- -n example-tree.json
+$ zig fmt --check .     # zig sources formatted
 $ nix flake check       # packages, tests, smoke, modules eval
 $ nix fmt               # format the nix files
 ```
+
+The version lives in exactly one place — `build.zig.zon` — and is threaded
+into the binary via build options and into the nix package by parsing the
+zon; `nix build` and `json2dir --version` can never disagree.
 
 ## What's still not fixed
 
